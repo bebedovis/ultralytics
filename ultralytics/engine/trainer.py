@@ -154,6 +154,9 @@ class BaseTrainer:
         if RANK in {-1, 0}:
             callbacks.add_integration_callbacks(self)
 
+        # Initialize bgr to grayscale weights, use .cuda() if you have a gpu
+        self.bgr_weights = torch.tensor([0.114, 0.587, 0.299]).cuda()
+
     def add_callback(self, event: str, callback):
         """Appends the given callback."""
         self.callbacks[event].append(callback)
@@ -381,6 +384,12 @@ class BaseTrainer:
 
                 # Forward
                 with autocast(self.amp):
+                    # Before preprocess, transform the batch from bgr to grayscale
+                    # If you have a gpu use .cuda() in batch["img"] for faster training
+                    batch["img"] = (
+                        batch["img"].cuda() * self.bgr_weights.view(1, 3, 1, 1)
+                    ).sum(dim=1, keepdim=True)
+
                     batch = self.preprocess_batch(batch)
                     self.loss, self.loss_items = self.model(batch)
                     if RANK != -1:

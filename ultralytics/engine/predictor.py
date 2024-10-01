@@ -122,9 +122,11 @@ class BasePredictor:
         not_tensor = not isinstance(im, torch.Tensor)
         if not_tensor:
             im = np.stack(self.pre_transform(im))
-            im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
+            # im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
             im = np.ascontiguousarray(im)  # contiguous
             im = torch.from_numpy(im)
+            # Transform the input img into a (n, 1, h, w) torch tensor
+            im = im.unsqueeze(1)
 
         im = im.to(self.device)
         im = im.half() if self.model.fp16 else im.float()  # uint8 to fp16/32
@@ -186,15 +188,24 @@ class BasePredictor:
     def setup_source(self, source):
         """Sets up source and inference mode."""
         self.imgsz = check_imgsz(self.args.imgsz, stride=self.model.stride, min_dim=2)  # check image size
+
+        # For classification model to work comment the following lines and create the transformations 
+
+        # self.transforms = (
+        #     getattr(
+        #         self.model.model,
+        #         "transforms",
+        #         classify_transforms(self.imgsz[0], crop_fraction=self.args.crop_fraction),
+        #     )
+        #     if self.args.task == "classify"
+        #     else None
+        # )
         self.transforms = (
-            getattr(
-                self.model.model,
-                "transforms",
-                classify_transforms(self.imgsz[0], crop_fraction=self.args.crop_fraction),
-            )
+            classify_transforms(self.imgsz[0], crop_fraction=self.args.crop_fraction, mean =0, std =1)
             if self.args.task == "classify"
             else None
         )
+
         self.dataset = load_inference_source(
             source=source,
             batch=self.args.batch,
@@ -231,7 +242,9 @@ class BasePredictor:
 
             # Warmup model
             if not self.done_warmup:
-                self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 3, *self.imgsz))
+                # Change the number of channels in warmup from 3 to 1
+                # self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 3, *self.imgsz))
+                self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 1, *self.imgsz))
                 self.done_warmup = True
 
             self.seen, self.windows, self.batch = 0, [], None
