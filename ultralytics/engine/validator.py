@@ -102,9 +102,6 @@ class BaseValidator:
         self.plots = {}
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
 
-        # Initialize bgr to grayscale weights, use .cuda() if you have a gpu
-        self.bgr_weights = torch.tensor([0.114, 0.587, 0.299]).cuda()
-
     @smart_inference_mode()
     def __call__(self, trainer=None, model=None):
         """Executes validation process, running inference on dataloader and computing performance metrics."""
@@ -156,10 +153,9 @@ class BaseValidator:
             self.dataloader = self.dataloader or self.get_dataloader(self.data.get(self.args.split), self.args.batch)
 
             model.eval()
-            # model.warmup(imgsz=(1 if pt else self.args.batch, 3, imgsz, imgsz))  # warmup
 
-            # Change warmup channels to 1
-            model.warmup(imgsz=(1 if pt else self.args.batch, 1, imgsz, imgsz))  # warmup
+            # Change warmup channels to specified number of channels
+            model.warmup(imgsz=(1 if pt else self.args.batch, self.args.get("ch",3), imgsz, imgsz))  # warmup
 
         self.run_callbacks("on_val_start")
         dt = (
@@ -176,11 +172,12 @@ class BaseValidator:
             self.batch_i = batch_i
             # Preprocess
             with dt[0]:
-                # Before preprocess, transform the batch from bgr to grayscale
-                # If you have a gpu use .cuda() in batch["img"] for faster validation
-                batch["img"] = (
-                    batch["img"].cuda() * self.bgr_weights.view(1, 3, 1, 1)
-                ).sum(dim=1, keepdim=True)
+                if self.args.get("ch",3) ==1:
+                    # Before preprocess, transform the batch from bgr to grayscale
+                    bgr_weights = torch.tensor([0.114, 0.587, 0.299]).to(device=self.device)
+                    batch["img"] = (
+                        batch["img"].to(device=self.device) * bgr_weights.view(1, 3, 1, 1)
+                    ).sum(dim=1, keepdim=True)
                 batch = self.preprocess(batch)
 
             # Inference

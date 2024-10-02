@@ -154,8 +154,8 @@ class BaseTrainer:
         if RANK in {-1, 0}:
             callbacks.add_integration_callbacks(self)
 
-        # Initialize bgr to grayscale weights, use .cuda() if you have a gpu
-        self.bgr_weights = torch.tensor([0.114, 0.587, 0.299]).cuda()
+        # Initialize bgr to grayscale weights 
+        self.bgr_weights = torch.tensor([0.114, 0.587, 0.299]).to(device=self.device)
 
     def add_callback(self, event: str, callback):
         """Appends the given callback."""
@@ -385,10 +385,10 @@ class BaseTrainer:
                 # Forward
                 with autocast(self.amp):
                     # Before preprocess, transform the batch from bgr to grayscale
-                    # If you have a gpu use .cuda() in batch["img"] for faster training
-                    batch["img"] = (
-                        batch["img"].cuda() * self.bgr_weights.view(1, 3, 1, 1)
-                    ).sum(dim=1, keepdim=True)
+                    if self.args.get("ch",3) == 1:
+                        batch["img"] = (
+                            batch["img"].to(device=self.device) * self.bgr_weights.view(1, 3, 1, 1)
+                        ).sum(dim=1, keepdim=True)
 
                     batch = self.preprocess_batch(batch)
                     self.loss, self.loss_items = self.model(batch)
@@ -789,7 +789,6 @@ class BaseTrainer:
             nc = getattr(model, "nc", 10)  # number of classes
             lr_fit = round(0.002 * 5 / (4 + nc), 6)  # lr0 fit equation to 6 decimal places
             name, lr, momentum = ("SGD", 0.01, 0.9) if iterations > 10000 else ("AdamW", lr_fit, 0.9)
-            self.args.warmup_bias_lr = 0.0  # no higher than 0.01 for Adam
 
         for module_name, module in model.named_modules():
             for param_name, param in module.named_parameters(recurse=False):

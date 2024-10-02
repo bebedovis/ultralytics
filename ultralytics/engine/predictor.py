@@ -110,6 +110,9 @@ class BasePredictor:
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
         self.txt_path = None
         self._lock = threading.Lock()  # for automatic thread-safe inference
+
+        # Initialize the number of channels in the image if specified by the user
+        self.ch = self.args.get("ch",3)
         callbacks.add_integration_callbacks(self)
 
     def preprocess(self, im):
@@ -122,11 +125,13 @@ class BasePredictor:
         not_tensor = not isinstance(im, torch.Tensor)
         if not_tensor:
             im = np.stack(self.pre_transform(im))
-            # im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
+            if self.ch>1:
+                im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
             im = np.ascontiguousarray(im)  # contiguous
             im = torch.from_numpy(im)
-            # Transform the input img into a (n, 1, h, w) torch tensor
-            im = im.unsqueeze(1)
+            if self.ch ==1:
+                # Transform the input img into a (n, 1, h, w) torch tensor
+                im = im.unsqueeze(1)
 
         im = im.to(self.device)
         im = im.half() if self.model.fp16 else im.float()  # uint8 to fp16/32
@@ -201,7 +206,7 @@ class BasePredictor:
         #     else None
         # )
         self.transforms = (
-            classify_transforms(self.imgsz[0], crop_fraction=self.args.crop_fraction, mean =0, std =1)
+            classify_transforms(self.imgsz[0], crop_fraction=self.args.crop_fraction, mean =[0]*self.ch, std =[1]*self.ch)
             if self.args.task == "classify"
             else None
         )
@@ -242,9 +247,12 @@ class BasePredictor:
 
             # Warmup model
             if not self.done_warmup:
-                # Change the number of channels in warmup from 3 to 1
-                # self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 3, *self.imgsz))
-                self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, 1, *self.imgsz))
+                # Change the number of channels in warmup from 3 to 1 if the models has been trained in a 1 channel input 
+                try:
+                    self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, self.ch, *self.imgsz))
+                except RuntimeError: 
+                    self.ch = 1
+                    self.model.warmup(imgsz=(1 if self.model.pt or self.model.triton else self.dataset.bs, self.ch, *self.imgsz))
                 self.done_warmup = True
 
             self.seen, self.windows, self.batch = 0, [], None
@@ -260,7 +268,17 @@ class BasePredictor:
 
                 # Preprocess
                 with profilers[0]:
-                    im = self.preprocess(im0s)
+                    try:
+                        im = self.preprocess(im0s)
+                    except RuntimeError:
+                        # If the channel wasn't specified correctly, try with 1 channel
+                        self.ch = 1
+                        self.transforms = (
+                            classify_transforms(self.imgsz[0], crop_fraction=self.args.crop_fraction, mean =[0]*self.ch, std =[1]*self.ch)
+                            if self.args.task == "classify"
+                            else None
+                        )
+                        im = self.preprocess(im0s)
 
                 # Inference
                 with profilers[1]:
@@ -303,7 +321,7 @@ class BasePredictor:
             t = tuple(x.t / self.seen * 1e3 for x in profilers)  # speeds per image
             LOGGER.info(
                 f"Speed: %.1fms preprocess, %.1fms inference, %.1fms postprocess per image at shape "
-                f"{(min(self.args.batch, self.seen), 3, *im.shape[2:])}" % t
+                f"{(min(self.args.batch, self.seen), self.ch, *im.shape[2:])}" % t
             )
         if self.args.save or self.args.save_txt or self.args.save_crop:
             nl = len(list(self.save_dir.glob("labels/*.txt")))  # number of labels
