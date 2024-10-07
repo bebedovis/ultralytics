@@ -69,3 +69,26 @@ results = model(img, ch=1)
 **CLI Example**
 
 Currently, prediction on grayscale images using the CLI doesn't work. 
+
+### Exporting in different formats
+
+These changes also allow the user to export a model in a different format in grayscale: 
+
+**CLI Example**
+
+```bash
+yolo export model="/path/to/your/model.pt" format="engine" ch=1 
+```
+
+If any problems arise when loading a different model type, specify the type of task
+
+```python
+
+from ultralytics import YOLO
+import cv2 
+
+model = YOLO("path/to/your/model.engine", task="classify/detect")
+img = cv2.imread("path/to/your/image", cv2.IMREAD_GRAYSCALE) 
+results = model(img, ch=1)
+```
+
