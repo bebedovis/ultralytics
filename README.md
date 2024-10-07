@@ -28,9 +28,7 @@ rm -r ultralytics/ultralytics
 
 **Editing your own package**
 
-Follow the steps in this medium article: 
-
-*lol haven't wirtten it*
+Follow the steps in this medium [article](https://medium.com/@ing.mauricioglez1409/yolo-grayscale-training-b3a3b46dec5f)
 
 ### Training 
 
