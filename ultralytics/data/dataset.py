@@ -419,6 +419,9 @@ class ClassificationDataset:
         import torchvision  # scope for faster 'import ultralytics'
 
         # Base class assigned as attribute rather than used as base class to allow for scoping slow torchvision import
+        self._use_numpy = args.get("numpy",False)
+        self._ch = args.get("ch",3)
+
         if TORCHVISION_0_18:  # 'allow_empty' argument first introduced in torchvision 0.18
             self.base = torchvision.datasets.ImageFolder(root=root, allow_empty=True)
         else:
@@ -460,17 +463,28 @@ class ClassificationDataset:
     def __getitem__(self, i):
         """Returns subset of data and targets corresponding to given indices."""
         f, j, fn, im = self.samples[i]  # filename, index, filename.with_suffix('.npy'), image
+        read_mode = cv2.IMREAD_COLOR if self._ch ==3 else cv2.IMREAD_GRAYSCALE
         if self.cache_ram:
             if im is None:  # Warning: two separate if statements required here, do not combine this with previous line
-                im = self.samples[i][3] = cv2.imread(f)
+                im = self.samples[i][3] = cv2.imread(f,read_mode)
         elif self.cache_disk:
             if not fn.exists():  # load npy
-                np.save(fn.as_posix(), cv2.imread(f), allow_pickle=False)
+                np.save(fn.as_posix(), cv2.imread(f,read_mode), allow_pickle=False)
             im = np.load(fn)
         else:  # read image
-            im = cv2.imread(f)  # BGR
-        # Convert NumPy array to PIL image
-        im = Image.fromarray(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
+            im = cv2.imread(f,read_mode)  # BGR
+
+        if self._use_numpy:
+            im = torch.from_numpy(im)
+            if self._ch ==3:
+                im = im.permute(2, 0, 1)
+            else:
+                im = im.unsqueeze(0)
+
+        else: 
+            if self._ch==3:
+                im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            im = Image.fromarray(im)
         sample = self.torch_transforms(im)
         return {"img": sample, "cls": j}
 

@@ -2367,7 +2367,7 @@ def classify_transforms(
         >>> img = Image.open("path/to/image.jpg")
         >>> transformed_img = transforms(img)
     """
-    import torchvision.transforms as T  # scope for faster 'import ultralytics'
+    import torchvision.transforms.v2 as T  # scope for faster 'import ultralytics'
 
     if isinstance(size, (tuple, list)):
         assert len(size) == 2, f"'size' tuples must be length 2, not length {len(size)}"
@@ -2386,7 +2386,9 @@ def classify_transforms(
     tfl.extend(
         [
             T.CenterCrop(size),
-            T.ToTensor(),
+            T.ConvertImageDtype(torch.float),
+            T.ToImage(),
+            T.ToDtype(torch.float32,scale=True),
             T.Normalize(mean=torch.tensor(mean), std=torch.tensor(std)),
         ]
     )
@@ -2440,7 +2442,7 @@ def classify_augmentations(
         >>> augmented_image = transforms(original_image)
     """
     # Transforms to apply if Albumentations not installed
-    import torchvision.transforms as T  # scope for faster 'import ultralytics'
+    import torchvision.transforms.v2 as T  # scope for faster 'import ultralytics'
 
     if not isinstance(size, int):
         raise TypeError(f"classify_transforms() size {size} must be integer, not (list, tuple)")
@@ -2489,7 +2491,8 @@ def classify_augmentations(
         secondary_tfl.append(T.ColorJitter(brightness=hsv_v, contrast=hsv_v, saturation=hsv_s, hue=hsv_h))
 
     final_tfl = [
-        T.ToTensor(),
+        T.ToImage(),
+        T.ToDtype(torch.float,scale=True),
         T.Normalize(mean=torch.tensor(mean), std=torch.tensor(std)),
         T.RandomErasing(p=erasing, inplace=True),
     ]
