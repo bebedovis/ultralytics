@@ -2386,8 +2386,8 @@ def classify_transforms(
     tfl.extend(
         [
             T.CenterCrop(size),
-            T.ConvertImageDtype(torch.float),
             T.ToImage(),
+            T.ConvertImageDtype(torch.float),
             T.ToDtype(torch.float32,scale=True),
             T.Normalize(mean=torch.tensor(mean), std=torch.tensor(std)),
         ]
